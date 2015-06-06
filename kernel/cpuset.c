@@ -1429,6 +1429,7 @@ static int cpuset_allow_attach(struct cgroup *cgrp,
 
 	return 0;
 }
+
 static void cpuset_cancel_attach(struct cgroup *cgrp,
 				 struct cgroup_taskset *tset)
 {
