@@ -1008,7 +1008,6 @@ static void hub_activate(struct usb_hub *hub, enum hub_activation_type type)
 	/* Continue a partial initialization */
 	if (type == HUB_INIT2 || type == HUB_INIT3) {
 		device_lock(hub->intfdev);
-
 		/* Was the hub disconnected while we were waiting? */
 		if (hub->disconnected) {
 			device_unlock(hub->intfdev);
