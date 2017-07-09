@@ -46,7 +46,7 @@
 
 #define SET_DREX_TIMING
 
-inline void REGULATOR_SET_VOLTAGE(struct regulator *a, unsigned long b, unsigned long c, bool is_first_level)
+static inline void REGULATOR_SET_VOLTAGE(struct regulator *a, unsigned long b, unsigned long c, bool is_first_level)
 {
 	bool dynamic_self_refresh_enabled = (__raw_readl(S5P_VA_DREXI_0 + 0x4) & 0x20) ? 1 : 0; /* check default status */
 	if(is_first_level && dynamic_self_refresh_enabled) {
