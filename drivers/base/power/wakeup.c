@@ -380,7 +380,7 @@ EXPORT_SYMBOL_GPL(device_set_wakeup_enable);
  */
 static void wakeup_source_activate(struct wakeup_source *ws)
 {
-	unsigned int cec;
+	unsigned int cec;	
 
 	/*
 	 * active wakeup source should bring the system
@@ -398,6 +398,10 @@ static void wakeup_source_activate(struct wakeup_source *ws)
 	cec = atomic_inc_return(&combined_event_count);
 
 	trace_wakeup_source_activate(ws->name, cec);
+	if (ws && ws->name)
+	{
+	pr_info("Wakeup source is this: %s\n", ws->name);
+	}
 }
 
 /**
@@ -940,4 +944,3 @@ static int __init active_wakelock_debugfs_init(void)
 }
 
 postcore_initcall(active_wakelock_debugfs_init);
-
