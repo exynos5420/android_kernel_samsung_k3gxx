@@ -138,7 +138,6 @@ struct mdnie_info {
 	unsigned int		tuning;
 	unsigned int		accessibility;
 	unsigned int		color_correction;
-	unsigned int		auto_brightness;
 
 	char			path[50];
 
@@ -159,5 +158,7 @@ extern int mdnie_calibration(int *r);
 extern int mdnie_open_file(const char *path, char **fp);
 extern int mdnie_register(struct device *p, void *data, mdnie_w w, mdnie_r r);
 extern struct mdnie_table *mdnie_request_table(char *path, struct mdnie_table *s);
+extern ssize_t attr_store_for_each(struct class *cls, const char *name, const char *buf, size_t size);
+extern struct class *get_mdnie_class(void);
 
 #endif /* __MDNIE_H__ */

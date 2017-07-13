@@ -29,10 +29,10 @@
 #define MDNIE_SYSFS_PREFIX		"/sdcard/mdnie/"
 #define PANEL_COORDINATE_PATH	"/sys/class/lcd/panel/color_coordinate"
 
-#define IS_DMB(idx)			(idx == DMB_NORMAL_MODE)
-#define IS_SCENARIO(idx)		((idx < SCENARIO_MAX) && !((idx > VIDEO_NORMAL_MODE) && (idx < CAMERA_MODE)))
-#define IS_ACCESSIBILITY(idx)		(idx && (idx < ACCESSIBILITY_MAX))
-#define IS_HBM(idx)			(idx >= 6)
+#define IS_DMB(idx)				(idx == DMB_NORMAL_MODE)
+#define IS_SCENARIO(idx)		(idx < SCENARIO_MAX && !(idx > VIDEO_NORMAL_MODE && idx < CAMERA_MODE))
+#define IS_ACCESSIBILITY(idx)	(idx && idx < ACCESSIBILITY_MAX)
+#define IS_HBM(idx)				(idx && idx < HBM_MAX)
 
 #define SCENARIO_IS_VALID(idx)	(IS_DMB(idx) || IS_SCENARIO(idx))
 
@@ -87,7 +87,7 @@ static struct mdnie_table *mdnie_find_table(struct mdnie_info *mdnie)
 	if (IS_ACCESSIBILITY(mdnie->accessibility)) {
 		table = &accessibility_table[mdnie->accessibility];
 		goto exit;
-	} else if (IS_HBM(mdnie->auto_brightness)) {
+	} else if (IS_HBM(mdnie->hbm)) {
 		table = &hbm_table[mdnie->hbm];
 		goto exit;
 #if defined(CONFIG_TDMB)
@@ -466,37 +466,35 @@ static ssize_t bypass_store(struct device *dev,
 	return count;
 }
 
-static ssize_t auto_brightness_show(struct device *dev,
+static ssize_t lux_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct mdnie_info *mdnie = dev_get_drvdata(dev);
 
-	return sprintf(buf, "%d, hbm: %d\n", mdnie->auto_brightness, mdnie->hbm);
+	return sprintf(buf, "%d\n", mdnie->hbm);
 }
 
-static ssize_t auto_brightness_store(struct device *dev,
+static ssize_t lux_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct mdnie_info *mdnie = dev_get_drvdata(dev);
-	unsigned int value;
-	int ret;
-	static unsigned int update;
+	unsigned int hbm = 0, update = 0;
+	int ret, value;
 
-	ret = kstrtoul(buf, 0, (unsigned long *)&value);
+	ret = kstrtoint(buf, 0, &value);
 	if (ret < 0)
 		return ret;
 
-	dev_info(dev, "%s: value=%d\n", __func__, value);
-
 	mutex_lock(&mdnie->lock);
-	update = (IS_HBM(mdnie->auto_brightness) != IS_HBM(value)) ? 1 : 0;
-	mdnie->hbm = IS_HBM(value) ? HBM_ON : HBM_OFF;
-	mdnie->auto_brightness = value;
+	hbm = get_hbm_index(value);
+	update = (mdnie->hbm != hbm) ? 1 : 0;
+	mdnie->hbm = update ? hbm : mdnie->hbm;
 	mutex_unlock(&mdnie->lock);
 
-	if (update)
+	if (update){
+		dev_info(dev, "%s: %d\n", __func__, value);
 		mdnie_update(mdnie);
-
+	}
 	return count;
 }
 
@@ -613,7 +611,7 @@ static struct device_attribute mdnie_attributes[] = {
 	__ATTR(accessibility, 0664, accessibility_show, accessibility_store),
 	__ATTR(color_correct, 0444, color_correct_show, NULL),
 	__ATTR(bypass, 0664, bypass_show, bypass_store),
-	__ATTR(auto_brightness, 0664, auto_brightness_show, auto_brightness_store),
+	__ATTR(lux, 0000, lux_show, lux_store),
 	__ATTR(mdnie, 0444, mdnie_show, NULL),
 	__ATTR(sensorRGB, 0664, sensorRGB_show, sensorRGB_store),
 	__ATTR_NULL,
@@ -722,5 +720,108 @@ error1:
 	class_destroy(mdnie_class);
 error0:
 	return ret;
+}
+
+static int attr_store(struct device *dev,
+	struct attribute *attr, const char *buf, size_t size)
+{
+	struct device_attribute *dev_attr = container_of(attr, struct device_attribute, attr);
+
+	dev_attr->store(dev, dev_attr, buf, size);
+
+	return 0;
+}
+
+static int attrs_store_iter(struct device *dev,
+	const char *name, const char *buf, size_t size, struct attribute **attrs)
+{
+	int i;
+
+	for (i = 0; attrs[i]; i++) {
+		if (!strcmp(name, attrs[i]->name))
+			attr_store(dev, attrs[i], buf, size);
+	}
+
+	return 0;
+}
+
+static int groups_store_iter(struct device *dev,
+	const char *name, const char *buf, size_t size, const struct attribute_group **groups)
+{
+	int i;
+
+	for (i = 0; groups[i]; i++)
+		attrs_store_iter(dev, name, buf, size, groups[i]->attrs);
+
+	return 0;
+}
+
+static int dev_attrs_store_iter(struct device *dev,
+	const char *name, const char *buf, size_t size, struct device_attribute *dev_attrs)
+{
+	int i;
+
+	for (i = 0; attr_name(dev_attrs[i]); i++) {
+		if (!strcmp(name, attr_name(dev_attrs[i])))
+			attr_store(dev, &dev_attrs[i].attr, buf, size);
+	}
+
+	return 0;
+}
+
+static int attr_find_and_store(struct device *dev,
+	const char *name, const char *buf, size_t size)
+{
+	struct device_attribute *dev_attrs;
+	const struct attribute_group **groups;
+
+	if (dev->class && dev->class->dev_attrs) {
+		dev_attrs = dev->class->dev_attrs;
+		dev_attrs_store_iter(dev, name, buf, size, dev_attrs);
+	}
+
+	if (dev->type && dev->type->groups) {
+		groups = dev->type->groups;
+		groups_store_iter(dev, name, buf, size, groups);
+	}
+
+	if (dev->groups) {
+		groups = dev->groups;
+		groups_store_iter(dev, name, buf, size, groups);
+	}
+
+	return 0;
+}
+
+ssize_t attr_store_for_each(struct class *cls,
+	const char *name, const char *buf, size_t size)
+{
+	struct class_dev_iter iter;
+	struct device *dev;
+	int error = 0;
+	struct class *class = cls;
+
+	if (!class)
+		return -EINVAL;
+	if (!class->p) {
+		WARN(1, "%s called for class '%s' before it was initialized",
+		     __func__, class->name);
+		return -EINVAL;
+	}
+
+	class_dev_iter_init(&iter, class, NULL, NULL);
+	while ((dev = class_dev_iter_next(&iter))) {
+		error = attr_find_and_store(dev, name, buf, size);
+		if (error)
+			break;
+	}
+	class_dev_iter_exit(&iter);
+
+	return error;
+}
+
+struct class *get_mdnie_class(void)
+{
+	return mdnie_class;
 }
 
