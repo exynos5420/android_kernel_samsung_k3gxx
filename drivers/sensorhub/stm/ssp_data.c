@@ -303,8 +303,7 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength) {
 				if (data->reportedData[iSensorData] == false)
 					sensortime.irq_diff = data->adDelayBuf[iSensorData];
 			}
-			pr_err("[SSP] Which Sensor %d, Batch Count %d\n", iSensorData, sensortime.batch_count);
-			pr_err("[SSP] time_diff %llu, irq_diff %llu\n", sensortime.time_diff, sensortime.irq_diff);
+
 			do {
 				data->get_sensor_data[iSensorData](pchRcvDataFrame, &iDataIdx,
 						&sensorsdata);
